@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: apps/v1
+metadata:
+  name: sree-rmpdir
+  namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+        - name: sree-emdir
+          image: sreeharinathpdev/empdir:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+
