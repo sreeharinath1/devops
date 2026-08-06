@@ -65,7 +65,7 @@ pipeline {
         dir('empdirectory-java-hdb/emp-dir-v1'){
           withSonarQubeEnv('sonarqube'){
             sh '''
-              mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+              mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar \
                 -Dsonar.projectKey=sree_emp_dir \
                 -Dsonar.projectName=empdirectory \
                 -Dsonar.qualitygate.wait=true
