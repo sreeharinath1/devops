@@ -11,7 +11,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
-      maxsurge: 1
+      maxSurge: 1
   replicas: 2
   template:
     metadata:
@@ -36,16 +36,16 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8080
-              initialDelaySeconds: 10
-              timeoutSeconds: 3
-              periodSeconds: 10
-              failureThreshold: 3
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8080
-              initialDelyaSeconds: 10
-              timeoutSeconds: 3
-              periodSeconds: 10
-              failureThreshold: 3
+            initialDelyaSeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
 
