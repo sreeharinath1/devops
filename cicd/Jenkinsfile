@@ -237,8 +237,8 @@ pipeline {
       )
 
     }
-    always (
+    always {
       echo "Pipeline Completed"
-    )
+    }
   }
 }
