@@ -49,7 +49,7 @@ pipeline {
     stage('Publish Jacoco HTML Report') {
       steps {
         dir('empdirectory-java-hdb/emp-dir-v1') {
-          publishHtml(target: [
+          publishHTML(target: [
             allowMissing: false,
             alwaysLinkToLastBuild: true,
             keepAll: true,
