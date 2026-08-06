@@ -181,7 +181,6 @@ pipeline {
       steps {
         sh '''
           kubectl rollout status deployment/sree-empdir -n dev
-          curl http://sree-empdir.dev.svc.cluster.local
         '''
       }
     }
