@@ -5,42 +5,49 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'main',
-          credentialsId: 'github_token',
-          url: 'https://github.com/sreeharinath1/projecthub.git'
+        dir('projecthub') {
+          git branch: 'main',
+              credentialsId: 'github_token',
+              url: 'https://github.com/sreeharinath1/projecthub.git'
+        }
+        dir('devops') {
+          git branch: 'main',
+              credentialsId: 'github_token',
+              url: 'https://github.com/sreeharinath1/devops.git'
+        }
       }
     }
     stage('Build') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           sh 'mvn clean compile'
         }
       }
     }
     stage('Unit Test') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           sh 'mvn test'
         }
       }
     }
     stage('Integration Test') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           sh 'mvn verify'
         }
       }
     }
     stage('Jacoco Report') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           sh 'mvn jacoco:report'
         }
       }
     }
     stage('Publish UTest Report') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
           junit allowEmptyResults: true, testResults: 'target/failsafe-reports/*.xml'
         }
@@ -48,7 +55,7 @@ pipeline {
     }
     stage('Publish Jacoco HTML Report') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           publishHTML(target: [
             allowMissing: false,
             alwaysLinkToLastBuild: true,
@@ -62,7 +69,7 @@ pipeline {
     }
     stage('SonarQube Scan') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1'){
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1'){
           withSonarQubeEnv('sonarqube'){
             sh '''
               mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar \
@@ -85,7 +92,7 @@ pipeline {
       parallel {
         stage('Snyk Check') {
           steps {
-            dir('empdirectory-java-hdb/emp-dir-v1'){
+            dir('projecthub/empdirectory-java-hdb/emp-dir-v1'){
               withCredentials([string(credentialsId: 'snyk_token', variable: 'SNYK_TOKEN')]) {
                 sh '''
                   snyk auth $SNYK_TOKEN
@@ -97,14 +104,14 @@ pipeline {
         }
         stage('Git Leaks Check'){
           steps {
-            dir('empdirectory-java-hdb/emp-dir-v1') {
+            dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
               sh 'gitleaks detect --source . --exit-code 0 || true'
             }
           }
         }
         stage('Trivy Fs Check'){
           steps {
-            dir('empdirectory-java-hdb/emp-dir-v1') {
+            dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
               sh '''
                 trivy fs \
                 --scanners vuln \
@@ -119,14 +126,14 @@ pipeline {
     }
     stage('Packaging') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1') {
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
           sh 'mvn clean package -DskipTests'
         }
       }
     }
     stage ('Docker Build Kaniko') {
      steps {
-       dir('empdirectory-java-hdb/emp-dir-v1') {
+       dir('projecthub/empdirectory-java-hdb/emp-dir-v1') {
          sh '''
            echo ".........Package Verification........."
            ls -lh target
@@ -136,8 +143,8 @@ pipeline {
            export DOCKER_CONFIG=/tmp/docker
            echo "===== Start Kaniko Build ====="
            kaniko \
-             --context=$(pwd) \
-             --dockerfile=$(pwd)/Dockerfile \
+             --context=$WORKSPACE/projecthub/empdirectory-java-hdb/emp-dir-v1 \
+             --dockerfile=$WORKSPACE/devops/empdirectory-java-hdb/Dockerfile \
              --destination=sreeharinathpdev/empdir:${BUILD_NUMBER} \
              --cache=true \
              --cache-repo=sreeharinathpdev/empdir-cache
@@ -147,7 +154,7 @@ pipeline {
     }
     stage('Image Scan') {
       steps {
-        dir('empdirectory-java-hdb/emp-dir-v1'){
+        dir('projecthub/empdirectory-java-hdb/emp-dir-v1'){
           sh '''
             trivy image \
               --cache-dir /tmp/trivy-cache \
@@ -162,7 +169,7 @@ pipeline {
     stage('Deploy to Dev') {
       steps {
         sh '''
-          kubectl apply -f ../k8s/empdir/dev/
+          kubectl apply -f $WORKSPACE/devops/k8s/empdir/dev/
           kubectl set image deployment/sree-empdir \
             sree-empdir=sreeharinathpdev/empdir:${BUILD_NUMBER} \
             -n dev
@@ -211,7 +218,7 @@ pipeline {
     stage('Deploy to Prod') {
       steps {
         sh '''
-          kubectl apply -f ../k8s/empdir/prod/
+          kubectl apply -f $WORKSPACE/devops/k8s/empdir/prod/
           kubectl set image deployment/sree-empdir \
           sree-empdir=sreeharinathpdev/empdir:${BUILD_NUMBER} \
           -n prod
