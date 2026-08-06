@@ -1,0 +1,244 @@
+pipeline {
+  agent {
+    label 'cicd-agent'
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'main',
+          credentialsId: 'github_token',
+          url: 'https://github.com/sreeharinath1/projecthub.git'
+      }
+    }
+    stage('Build') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          sh 'mvn clean compile'
+        }
+      }
+    }
+    stage('Unit Test') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          sh 'mvn test'
+        }
+      }
+    }
+    stage('Integration Test') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          sh 'mvn verify'
+        }
+      }
+    }
+    stage('Jacoco Report') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          sh 'mvn jacoco:report'
+        }
+      }
+    }
+    stage('Publish UTest Report') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+          junit allowEmptyResults: true, testResults: 'target/failsafe-reports/*.xml'
+        }
+      }
+    }
+    stage('Publish Jacoco HTML Report') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          publishHtml(target: [
+            allowMissing: false,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'target/site/jacoco',
+            reportFiles: 'index.html'
+            reportName: 'Jacoco Coverage Report'
+          ])
+        }
+      }
+    }
+    stage('SonarQube Scan') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1'){
+          withSonarQubeEnv('sonarqube'){
+            sh '''
+              mvn org.sonarsource.scanner.maven.sonar-maven-plugin:sonar \
+                -Dsonar.projectKey=sree_emp_dir \
+                -Dsonar.projectName=empdirectory \
+                -Dsonar.qualitygate.wait=true
+            '''
+          }
+        }
+      }
+    }
+    stage('Quality Gate'){
+      steps {
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+    stage('Security Scan'){
+      parallel {
+        stage('Snyk Check') {
+          steps {
+            dir('empdirectory-java-hdb/emp-dir-v1'){
+              withCredentials([string(credentialsId: 'snyk_token', variable: 'SNYK_TOKEN')]) {
+                sh '''
+                  snyk auth $SNYK_TOKEN
+                  snyk test --severity-threshold=high || true
+                '''
+              }
+            }
+          }
+        }
+        stage('Git Leaks Check'){
+          steps {
+            dir('empdirectory-java-hdb/emp-dir-v1') {
+              sh 'gitleaks detect --source . --exit-code 0 || true'
+            }
+          }
+        }
+        stage('Trivy Fs Check'){
+          steps {
+            dir('empdirectory-java-hdb/emp-dir-v1') {
+              sh '''
+                trivy fs \
+                --scanners vuln \
+                --severity HIGH,CRITICAL \
+                --format table \
+                .
+              '''
+            }
+          }
+        }
+      }
+    }
+    stage('Packaging') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1') {
+          sh 'mvn clean package -DskipTests'
+        }
+      }
+    }
+    stage ('Docker Build Kaniko') {
+     steps {
+       dir('empdirectory-java-hdb/emp-dir-v1') {
+         sh '''
+           echo ".........Package Verification........."
+           ls -lh target
+           echo ".........Preapare Dockerconfig........"
+           mkdir -p  /tmp/docker
+           cp /kaniko/.docker/.dockerconfigjson /tmp/docker/config.json
+           export DOCKER_CONFIG=/tmp/docker
+           echo "===== Start Kaniko Build ====="
+           kaniko \
+             --context=$(pwd) \
+             --dockerfile=$(pwd)/Dockerfile \
+             --destination=sreeharinathpdev/empdir:${BUILD_NUMBER} \
+             --cache=true \
+             --cahce-repo=sreeharinathpdev/empdir-cach
+         '''
+       }
+     }
+    }
+    stage('Image Scan') {
+      steps {
+        dir('empdirectory-java-hdb/emp-dir-v1'){
+          sh '''
+            trivy image \
+              --cache-dir /tmp/trivy-cache \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed  \
+              --format table \
+            sreeharinathpdev/empdir:${BUILD_NUMBER}
+          '''
+        }
+      }
+    }
+    stage('Deploy to Dev') {
+      steps {
+        sh '''
+          kubectl apply -f ../k8s/empdir/dev/
+          kubectl set image deployment/sree-empdir \
+            sree-empdir=sreeharinathpdev/empdir:${BUILD_NUMBER} \
+            -n dev
+          kubectl rollout status deployment/sree-empdir -n dev
+        '''
+      }
+    }
+    stage('Smoke Test') {
+      steps {
+        sh '''
+          kubectl rollout status deployment/sree-empdir -n dev
+          curl http://localhost:8080
+        '''
+      }
+    }
+    stage('Notify Manager') {
+      steps {
+        emailext(
+          subject: "Approval Required -${env.JOB_NAME} #${env.BUILD_NUMBER}",
+          to: 'sreeharinathp@gmail.com',
+          body: """
+           Hello,
+
+           Development deployment completed successfully
+           Build: ${env.BUILD_NUMBER}
+           Job: ${env.JOB_NAME}
+           Please Approve production deployment
+           Approval Url:
+           ${env.BUILD_URL}input
+           Regards,
+           Jenkins
+          """
+        )
+      }
+    }
+    stage('Approval Gate for PROD') {
+      steps {
+        timeout(time: 5, unit: 'MINUTES') {
+          input (
+            message: 'Deploy to Prod',
+            ok: 'approve'
+          )
+        }
+      }
+    }
+    stage('Deploy to Prod') {
+      steps {
+        sh '''
+          kubectl apply -f ../k8s/empdir/prod/
+          kubectl set image deployment/sree-empdir \
+          sree-empdir=sreeharinathpdev/empdir:${BUILD_NUMBER} \
+          -n prod
+          kubectl rollout status deployment/sree-empdir -n dev
+        '''
+      }
+    }
+  }
+  post {
+    success {
+      emailext {
+        subject: "SUCCESS: ${env.JOB_NAME}",
+        body: "This is Generated by Jenkins, ${env.BUILD_NUMBER}- Build got Failed\n${env.BUILD_URL}",
+        to: "sreeharinathp@gmail.com"
+      }
+
+    }
+    failure {
+      emailext {
+        subject: "FAILURE: ${env.JOB_NAME}",
+        body: "This is Generated by Jenkins, ${env.BUILD_NUMBER}-Build got Failed\n${env.BUILD_URL}",
+        to: "sreeharinathp@gmail.com"
+      }
+
+    }
+    always {
+      echo "Pipeline Completed"
+    }
+  }
+}
