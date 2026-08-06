@@ -169,7 +169,7 @@ pipeline {
     stage('Deploy to Dev') {
       steps {
         sh '''
-          kubectl apply -f $WORKSPACE/devops/k8s/dev/
+          kubectl apply -f $WORKSPACE/devops/k8s/empdirectory-java-hdb/dev/
           kubectl set image deployment/sree-empdir \
             sree-empdir=sreeharinathpdev/empdir:${BUILD_NUMBER} \
             -n dev
@@ -218,7 +218,7 @@ pipeline {
     stage('Deploy to Prod') {
       steps {
         sh '''
-          kubectl apply -f $WORKSPACE/devops/k8s/prod/
+          kubectl apply -f $WORKSPACE/devops/empdirectory-java-hdb/k8s/prod/
           kubectl set image deployment/sree-empdir \
           sree-empdir=sreeharinathpdev/empdir:${BUILD_NUMBER} \
           -n prod
