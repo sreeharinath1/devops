@@ -140,7 +140,7 @@ pipeline {
              --dockerfile=$(pwd)/Dockerfile \
              --destination=sreeharinathpdev/empdir:${BUILD_NUMBER} \
              --cache=true \
-             --cahce-repo=sreeharinathpdev/empdir-cach
+             --cache-repo=sreeharinathpdev/empdir-cache
          '''
        }
      }
